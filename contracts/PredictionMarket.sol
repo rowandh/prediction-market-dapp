@@ -3,18 +3,21 @@ pragma solidity ^0.4.2;
 contract PredictionMarket {
 
     address public owner;
+    uint public reward;
 
     struct BinaryOption {
         string description;
         uint expiryBlock;
         bool resolved;
         Outcome outcome;
+        uint totalBalance;                
         mapping(uint8 => uint) balances; // Outcome => balance
     }
 
     struct Prediction {
         uint amount;
         Outcome predictedOutcome;
+        bool paidOut;
     }
 
     mapping(bytes32 => BinaryOption) public binaryOptions;
@@ -27,6 +30,21 @@ contract PredictionMarket {
         owner = msg.sender;
     }
 
+    function getOutcomeBalance(bytes32 identifier, Outcome outcome)
+        isValidOutcome(outcome)
+        public 
+        constant 
+        returns(uint balance) {
+            return binaryOptions[identifier].balances[uint8(outcome)];
+    }
+
+    function getTotalBalance(bytes32 identifier) 
+        public
+        constant 
+        returns(uint totalBalance) {
+            return binaryOptions[identifier].totalBalance;
+    }    
+        
     function addBinaryOption(bytes32 identifier, string description, uint durationInBlocks)
         isOwner()
         public returns(bool success) {
@@ -45,7 +63,9 @@ contract PredictionMarket {
         return true;
     }
 
-    function predict(bytes32 identifier, Outcome outcome) payable returns(bool success) {
+    function predict(bytes32 identifier, Outcome outcome) 
+        isValidOutcome(outcome)
+        payable returns(bool success) {
 
         // Must back your prediction
         require(msg.value > 0);
@@ -56,12 +76,10 @@ contract PredictionMarket {
         // Don't allow duplicate bets
         require(predictions[msg.sender][identifier].amount == 0);
 
-        // Only accept predictions for yes and no outcomes
-        require(outcome == Outcome.Yes || outcome == Outcome.No);
-
-        BinaryOption option = binaryOptions[identifier];
+        BinaryOption storage option = binaryOptions[identifier];
 
         option.balances[uint8(outcome)] += msg.value;
+        option.totalBalance += msg.value;
 
         Prediction memory prediction;
         prediction.amount = msg.value;
@@ -73,6 +91,7 @@ contract PredictionMarket {
 
     function resolveBinaryOption(bytes32 identifier, Outcome outcome) 
         isOwner()
+        isValidOutcome(outcome)
         public 
         returns(bool success) {
 
@@ -83,22 +102,56 @@ contract PredictionMarket {
         return true;
     }
 
-    function requestPayout() {
+    function requestPayout(bytes32 identifier)
+        public 
+        returns(bool success) {
+        
+        BinaryOption storage option = binaryOptions[identifier];
+        require(option.expiryBlock > 0);
+
+        Prediction storage prediction = predictions[msg.sender][identifier];
+        require(prediction.amount > 0);
 
         // If the outcome has not been resolved, require that the option has expired
-        // if() {
-        //     require(binaryOptions[identifier].expiryBlock > block.number);
+        // if(!option.resolved) {
+        //     require(option.expiryBlock > block.number);
         // }
+        uint totalBalance = option.totalBalance;
+        uint outcomeBalance = getOutcomeBalance(identifier, prediction.predictedOutcome);
+
+        // Scaling factor of the outcome pool to the total balance
+        uint r = totalBalance / outcomeBalance;
+        uint payoutAmount = r * prediction.amount;
+
+        prediction.paidOut = true;
+        option.totalBalance -= payoutAmount;
+        msg.sender.transfer(payoutAmount);
+        
+        return true;
     }
 
-    function kill() {
-        require (msg.sender == owner);
+    function calculateReward(bytes32 identifier, Prediction prediction) 
+        internal 
+        returns(uint) {
+        
+        uint totalBalance = getTotalBalance(identifier);
+        uint outcomeBalance = getOutcomeBalance(identifier, prediction.predictedOutcome);
 
+        // Your percent of all the people who were right times the total pool
+        return (prediction.amount / outcomeBalance) * totalBalance;
+    }
+
+    function kill() isOwner() public {
         selfdestruct(owner);
     }
 
     modifier isOwner() {
         require(msg.sender == owner);
+        _;
+    }
+
+    modifier isValidOutcome(Outcome outcome) {
+        require(outcome == Outcome.Yes || outcome == Outcome.No);
         _;
     }
 }
