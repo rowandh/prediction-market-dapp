@@ -116,10 +116,17 @@ contract PredictionMarket {
         returns(bool success) {
         
         BinaryOption storage option = binaryOptions[identifier];
+
+        // Option must exist
         require(option.expiryBlock > 0);
 
         Prediction storage prediction = predictions[msg.sender][identifier];
+        
+        // Prediction must exist
         require(prediction.amount > 0);
+
+        // Don't pay out twice
+        require(!prediction.paidOut);
 
         // If the outcome has not been resolved, require that the option has expired
         if(!option.resolved) {

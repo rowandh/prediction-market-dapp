@@ -416,5 +416,35 @@ contract("PredictionMarket", (accounts) => {
         assert.isTrue(finalAccountBalance.minus(initialAccountBalance).plus(gasCost).eq(4000));
         assert.equal(12000, totalBalanceAfter.minus(totalBalanceBefore).toString(10));
       });
+  });
+  
+  it("should not pay out twice", () => {
+    const testPrediction = web3.sha3("should not pay out twice");
+    let initialAccountBalance, finalAccountBalance;
+    let totalBalanceBefore, totalBalanceAfter;
+    let gasUsed, gasPrice;
+    let yesContribution1 = 1000;
+    let yesContribution2 = 3000;
+    let noContribution = 12000;
+
+    return PredictionMarket.deployed()
+      .then(i => {
+        instance = i;
+        return i.addBinaryOption(testPrediction, description, 100);
+      })      
+      .then(() => {        
+          return instance.predict(testPrediction, yesOutcome, { value: yesContribution1, from: accounts[0] });
+      })        
+      .then(() => {
+        return instance.resolveBinaryOption(testPrediction, yesOutcome);
+      })
+      .then(() => {
+        return instance.requestPayout(testPrediction);
+      })      
+      .then(() => {
+        return expectedExceptionPromise(() => {
+          return instance.requestPayout(testPrediction);
+        })
+      });      
   });   
 });
