@@ -140,8 +140,11 @@ contract("PredictionMarket", (accounts) => {
     return PredictionMarket.deployed()
       .then(i => {
         instance = i;
+        return instance.addBinaryOption(testPrediction, description, 100);
+      })    
+      .then(() => {
         return expectedExceptionPromise(() => {          
-          return i.predict(testPrediction, unresolvedOutcome, { value: 123 })
+          return instance.predict(testPrediction, unresolvedOutcome, { value: 123 })
         });              
       });
   });
@@ -153,9 +156,12 @@ contract("PredictionMarket", (accounts) => {
     return PredictionMarket.deployed()
       .then(i => {
         instance = i;
+        return instance.addBinaryOption(testPrediction, description, 100);
+      })    
+      .then(() => {
         return expectedExceptionPromise(() => {          
-          return i.predict(testPrediction, undecidedOutcome, { value: 123 })
-        });              
+          return instance.predict(testPrediction, undecidedOutcome, { value: 123 })
+        });
       });
   });
   
@@ -166,11 +172,28 @@ contract("PredictionMarket", (accounts) => {
     return PredictionMarket.deployed()
       .then(i => {
         instance = i;
+        return instance.addBinaryOption(testPrediction, description, 100);
+      })    
+      .then(() => {
         return expectedExceptionPromise(() => {          
-          return i.predict(testPrediction, 1234, { value: 123 })
+          return instance.predict(testPrediction, 1234, { value: 123 })
         });              
       });
   });   
+
+  it("should not allow predictions for nonexistant options", () => {
+    
+    const testPrediction = web3.sha3("should not allow predictions for nonexistant options");
+    
+    return PredictionMarket.deployed()
+      .then(i => {
+        instance = i;
+        return expectedExceptionPromise(() => {
+          return i.predict(testPrediction, yesOutcome, { value: 123 })
+        });
+      });
+  }); 
+
 
   it("should allow yes predictions", () => {
     
@@ -179,7 +202,10 @@ contract("PredictionMarket", (accounts) => {
     return PredictionMarket.deployed()
       .then(i => {
         instance = i;
-        return i.predict(testPrediction, yesOutcome, { value: 123 })
+        return instance.addBinaryOption(testPrediction, description, 100);
+      })      
+      .then(() => {
+        return instance.predict(testPrediction, yesOutcome, { value: 123 })
       })
       .then(() => {
           return instance.predictions.call(accounts[0], testPrediction);
@@ -187,7 +213,7 @@ contract("PredictionMarket", (accounts) => {
       .then(prediction => {
         assert.equal("123", prediction[0].toString(10));
       });
-  }); 
+  });   
 
 
   it("should allow no predictions", () => {
@@ -197,7 +223,10 @@ contract("PredictionMarket", (accounts) => {
     return PredictionMarket.deployed()
       .then(i => {
         instance = i;
-        return i.predict(testPrediction, noOutcome, { value: 123 })
+        return instance.addBinaryOption(testPrediction, description, 100);
+      })      
+      .then(() => {
+        return instance.predict(testPrediction, noOutcome, { value: 123 })
       })
       .then(() => {
           return instance.predictions.call(accounts[0], testPrediction);
@@ -207,11 +236,74 @@ contract("PredictionMarket", (accounts) => {
       });
   });
 
-  it("should pay out correctly", () => {
-    const testPrediction = web3.sha3("should pay out correctly");
+  it("should not allow predictions on expired options", () => {
+    
+    const testPrediction = web3.sha3("should not allow predictions on expired options");
+    
+    return PredictionMarket.deployed()
+      .then(i => {
+        instance = i;
+        return instance.addBinaryOption(testPrediction, description, 1);
+      })
+      .then(() => {
+        // Go forward a block
+        return instance.predict(testPrediction, yesOutcome, { from: accounts[1], value: 100 })
+      })
+      .then(() => {
+        return expectedExceptionPromise(() => {
+          return instance.predict(testPrediction, noOutcome, { value: 123 })
+        })
+      });
+  });
+
+  it("should not allow predictions on resolved options", () => {
+    
+    const testPrediction = web3.sha3("should not allow predictions on resolved options");
+    
+    return PredictionMarket.deployed()
+      .then(i => {
+        instance = i;
+        return instance.addBinaryOption(testPrediction, description, 100);
+      })
+      .then(() => {
+        return instance.resolveBinaryOption(testPrediction, yesOutcome);
+      })        
+      .then(() => {
+        // Go forward a block
+        return expectedExceptionPromise(() => {
+          return instance.predict(testPrediction, yesOutcome, { from: accounts[1], value: 100 })
+        });
+      });
+  });  
+
+  it("should resolve option", () => {
+    const testPrediction = web3.sha3("should resolve option");
+    
+    return PredictionMarket.deployed()
+      .then(i => {
+        instance = i;
+        return instance.addBinaryOption(testPrediction, description, 100);
+      })
+      .then(() => {
+        return instance.resolveBinaryOption(testPrediction, yesOutcome);
+      })      
+      .then(() => {
+        return instance.binaryOptions.call(testPrediction);
+      })
+      .then(option => {        
+        assert.isTrue(option[2]); //Resolved
+        assert.equal(1, option[3]); //Yes
+      })
+  });
+
+  it("should pay out the correct amount for an undecided outcome", () => {
+    const testPrediction = web3.sha3("should pay out the correct amount for an undecided outcome");
     let initialAccountBalance, finalAccountBalance;
     let totalBalanceBefore, totalBalanceAfter;
     let gasUsed, gasPrice;
+    let yesContribution1 = 1000;
+    let yesContribution2 = 3000;
+    let noContribution = 12000;
 
     return PredictionMarket.deployed()
       .then(i => {
@@ -225,19 +317,79 @@ contract("PredictionMarket", (accounts) => {
         totalBalanceBefore = _totalBalanceBefore;
       })         
       .then(() => {        
-          return instance.predict(testPrediction, yesOutcome, { value: 1000, from: accounts[0] });
+          return instance.predict(testPrediction, yesOutcome, { value: yesContribution1, from: accounts[0] });
       })
       .then(() => {        
-        return instance.predict(testPrediction, yesOutcome, { value: 3000, from: accounts[1] });
+        return instance.predict(testPrediction, yesOutcome, { value: yesContribution2, from: accounts[1] });
       })        
       .then(() => {        
-        return instance.predict(testPrediction, noOutcome, { value: 12000, from: accounts[2] });
+        return instance.predict(testPrediction, noOutcome, { value: noContribution, from: accounts[2] });
+      })          
+      .then(() => {
+        return instance.resolveBinaryOption(testPrediction, undecidedOutcome);
+      })
+      .then(() => {
+        return web3.eth.getBalance(accounts[0])
+      })
+      .then(_initialAccountBalance => {
+        initialAccountBalance = _initialAccountBalance;                       
+        return instance.requestPayout(testPrediction);
+      })      
+      .then(tx => {
+        gasUsed = tx.receipt.gasUsed;
+        return web3.eth.getTransaction(tx.receipt.transactionHash);
+      })
+      .then(tx => {
+        gasPrice = tx.gasPrice;
+        return web3.eth.getBalance(accounts[0]);        
+      })
+      .then(_finalAccountBalance => {
+        finalAccountBalance = _finalAccountBalance;      
+        return instance.getTotalBalance.call(testPrediction);
+      })
+      .then(_totalBalanceAfter => {
+        totalBalanceAfter = _totalBalanceAfter;
+      })
+      .then(() => {
+        const gasCost = gasPrice.times(gasUsed);
+        assert.isTrue(finalAccountBalance.minus(initialAccountBalance).plus(gasCost).eq(yesContribution1));
+        assert.equal(15000, totalBalanceAfter.minus(totalBalanceBefore).toString(10));
+      });
+  }); 
+
+  it("should pay out the correct amount for a decided outcome", () => {
+    const testPrediction = web3.sha3("should pay out the correct amount for a decided outcome");
+    let initialAccountBalance, finalAccountBalance;
+    let totalBalanceBefore, totalBalanceAfter;
+    let gasUsed, gasPrice;
+    let yesContribution1 = 1000;
+    let yesContribution2 = 3000;
+    let noContribution = 12000;
+
+    return PredictionMarket.deployed()
+      .then(i => {
+        instance = i;
+        return i.addBinaryOption(testPrediction, description, 100);
+      })
+      .then(() => {
+        return instance.getTotalBalance.call(testPrediction);
+      })
+      .then(_totalBalanceBefore => {
+        totalBalanceBefore = _totalBalanceBefore;
+      })         
+      .then(() => {        
+          return instance.predict(testPrediction, yesOutcome, { value: yesContribution1, from: accounts[0] });
+      })
+      .then(() => {        
+        return instance.predict(testPrediction, yesOutcome, { value: yesContribution2, from: accounts[1] });
+      })        
+      .then(() => {        
+        return instance.predict(testPrediction, noOutcome, { value: noContribution, from: accounts[2] });
       })          
       .then(() => {
         return instance.resolveBinaryOption(testPrediction, yesOutcome);
       })
-      .then(_initialAccountBalance => {
-        initialAccountBalance = _initialAccountBalance;
+      .then(() => {
         return web3.eth.getBalance(accounts[0])
       })
       .then(_initialAccountBalance => {
@@ -264,6 +416,5 @@ contract("PredictionMarket", (accounts) => {
         assert.isTrue(finalAccountBalance.minus(initialAccountBalance).plus(gasCost).eq(4000));
         assert.equal(12000, totalBalanceAfter.minus(totalBalanceBefore).toString(10));
       });
-  }); 
-
+  });   
 });

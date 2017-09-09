@@ -3,7 +3,6 @@ pragma solidity ^0.4.2;
 contract PredictionMarket {
 
     address public owner;
-    uint public reward;
 
     struct BinaryOption {
         string description;
@@ -48,7 +47,10 @@ contract PredictionMarket {
     function addBinaryOption(bytes32 identifier, string description, uint durationInBlocks)
         isOwner()
         public returns(bool success) {
-                
+        
+        // Don't allow options with no expiry
+        require(durationInBlocks > 0);
+
         // Check that this option does not exist already
         require(binaryOptions[identifier].expiryBlock == 0);
 
@@ -70,8 +72,14 @@ contract PredictionMarket {
         // Must back your prediction
         require(msg.value > 0);
 
+        // Require that the option exists
+        require(binaryOptions[identifier].expiryBlock > 0);
+
         // Require that the option has not expired
-        //require(binaryOptions[identifier].expiryBlock >= block.number);
+        require(binaryOptions[identifier].expiryBlock >= block.number);
+
+        // Require that the option has not been resolved
+        require(!binaryOptions[identifier].resolved);
 
         // Don't allow duplicate bets
         require(predictions[msg.sender][identifier].amount == 0);
@@ -91,11 +99,12 @@ contract PredictionMarket {
 
     function resolveBinaryOption(bytes32 identifier, Outcome outcome) 
         isOwner()
-        isValidOutcome(outcome)
         public 
         returns(bool success) {
 
-        BinaryOption memory option = binaryOptions[identifier];
+        require(outcome == Outcome.Yes || outcome == Outcome.No || outcome == Outcome.Undecided);
+
+        BinaryOption storage option = binaryOptions[identifier];
         option.resolved = true;
         option.outcome = outcome;
         
@@ -113,14 +122,20 @@ contract PredictionMarket {
         require(prediction.amount > 0);
 
         // If the outcome has not been resolved, require that the option has expired
-        // if(!option.resolved) {
-        //     require(option.expiryBlock > block.number);
-        // }
+        if(!option.resolved) {
+            require(option.expiryBlock > block.number);
+        }
+        
         uint totalBalance = option.totalBalance;
         uint outcomeBalance = getOutcomeBalance(identifier, prediction.predictedOutcome);
 
         // Scaling factor of the outcome pool to the total balance
-        uint r = totalBalance / outcomeBalance;
+        uint r = 1;
+
+        if (option.outcome != Outcome.Undecided) {
+            r = totalBalance / outcomeBalance;
+        }
+        
         uint payoutAmount = r * prediction.amount;
 
         prediction.paidOut = true;
@@ -128,17 +143,6 @@ contract PredictionMarket {
         msg.sender.transfer(payoutAmount);
         
         return true;
-    }
-
-    function calculateReward(bytes32 identifier, Prediction prediction) 
-        internal 
-        returns(uint) {
-        
-        uint totalBalance = getTotalBalance(identifier);
-        uint outcomeBalance = getOutcomeBalance(identifier, prediction.predictedOutcome);
-
-        // Your percent of all the people who were right times the total pool
-        return (prediction.amount / outcomeBalance) * totalBalance;
     }
 
     function kill() isOwner() public {
