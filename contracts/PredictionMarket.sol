@@ -97,18 +97,33 @@ contract PredictionMarket {
         return true;
     }
 
-    function resolveBinaryOption(bytes32 identifier, Outcome outcome) 
+    // Mark the option as resolved so that an outcome can be set
+    // This must be done in a separate block from setting an outcome
+    function resolveBinaryOption(bytes32 identifier) 
         isOwner()
         public 
         returns(bool success) {
 
-        require(outcome == Outcome.Yes || outcome == Outcome.No || outcome == Outcome.Undecided);
-
         BinaryOption storage option = binaryOptions[identifier];
         option.resolved = true;
-        option.outcome = outcome;
         
         return true;
+    }
+
+    function setOptionOutcome(bytes32 identifier, Outcome outcome) 
+        isOwner()
+        public
+        returns(bool success) {
+        
+        require(outcome == Outcome.Yes || outcome == Outcome.No || outcome == Outcome.Undecided);
+        
+        BinaryOption storage option = binaryOptions[identifier];
+        
+        require(option.resolved);
+        
+        option.outcome = outcome;
+        
+        return true;        
     }
 
     function requestPayout(bytes32 identifier)

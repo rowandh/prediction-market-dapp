@@ -266,8 +266,8 @@ contract("PredictionMarket", (accounts) => {
         return instance.addBinaryOption(testPrediction, description, 100);
       })
       .then(() => {
-        return instance.resolveBinaryOption(testPrediction, yesOutcome);
-      })        
+        return instance.resolveBinaryOption(testPrediction);
+      })              
       .then(() => {
         // Go forward a block
         return expectedExceptionPromise(() => {
@@ -285,8 +285,35 @@ contract("PredictionMarket", (accounts) => {
         return instance.addBinaryOption(testPrediction, description, 100);
       })
       .then(() => {
-        return instance.resolveBinaryOption(testPrediction, yesOutcome);
+        return instance.resolveBinaryOption(testPrediction);
       })      
+      .then(() => {
+        return instance.binaryOptions.call(testPrediction);
+      })
+      .then(option => {        
+        assert.isTrue(option[2]); //Resolved
+      })
+  });
+
+  it("should only set option outcome if option is resolved", () => {
+    const testPrediction = web3.sha3("should only set option outcome if option is resolved");
+    
+    return PredictionMarket.deployed()
+      .then(i => {
+        instance = i;
+        return instance.addBinaryOption(testPrediction, description, 100);
+      })
+      .then(() => {
+        return expectedExceptionPromise(() => {
+          return instance.setOptionOutcome(testPrediction, yesOutcome);
+        });
+      })        
+      .then(() => {
+        return instance.resolveBinaryOption(testPrediction);
+      })  
+      .then(() => {
+          return instance.setOptionOutcome(testPrediction, yesOutcome);
+      })            
       .then(() => {
         return instance.binaryOptions.call(testPrediction);
       })
@@ -294,7 +321,7 @@ contract("PredictionMarket", (accounts) => {
         assert.isTrue(option[2]); //Resolved
         assert.equal(1, option[3]); //Yes
       })
-  });
+  });  
 
   it("should pay out the correct amount for an undecided outcome", () => {
     const testPrediction = web3.sha3("should pay out the correct amount for an undecided outcome");
@@ -326,8 +353,11 @@ contract("PredictionMarket", (accounts) => {
         return instance.predict(testPrediction, noOutcome, { value: noContribution, from: accounts[2] });
       })          
       .then(() => {
-        return instance.resolveBinaryOption(testPrediction, undecidedOutcome);
+        return instance.resolveBinaryOption(testPrediction);
       })
+      .then(() => {
+        return instance.setOptionOutcome(testPrediction, undecidedOutcome);
+      })      
       .then(() => {
         return web3.eth.getBalance(accounts[0])
       })
@@ -387,8 +417,11 @@ contract("PredictionMarket", (accounts) => {
         return instance.predict(testPrediction, noOutcome, { value: noContribution, from: accounts[2] });
       })          
       .then(() => {
-        return instance.resolveBinaryOption(testPrediction, yesOutcome);
+        return instance.resolveBinaryOption(testPrediction);
       })
+      .then(() => {
+        return instance.setOptionOutcome(testPrediction, yesOutcome);
+      })         
       .then(() => {
         return web3.eth.getBalance(accounts[0])
       })
@@ -436,8 +469,11 @@ contract("PredictionMarket", (accounts) => {
           return instance.predict(testPrediction, yesOutcome, { value: yesContribution1, from: accounts[0] });
       })        
       .then(() => {
-        return instance.resolveBinaryOption(testPrediction, yesOutcome);
+        return instance.resolveBinaryOption(testPrediction);
       })
+      .then(() => {
+        return instance.setOptionOutcome(testPrediction, yesOutcome);
+      }) 
       .then(() => {
         return instance.requestPayout(testPrediction);
       })      
