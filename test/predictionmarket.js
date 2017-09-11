@@ -482,5 +482,35 @@ contract("PredictionMarket", (accounts) => {
           return instance.requestPayout(testPrediction);
         })
       });      
+  }); 
+  
+  it("should not pay out incorrect predictions for a decided option", () => {
+    const testPrediction = web3.sha3("should not pay out incorrect predictions for a decided option");
+    let initialAccountBalance, finalAccountBalance;
+    let totalBalanceBefore, totalBalanceAfter;
+    let gasUsed, gasPrice;
+    let yesContribution1 = 1000;
+    let yesContribution2 = 3000;
+    let noContribution = 12000;
+
+    return PredictionMarket.deployed()
+      .then(i => {
+        instance = i;
+        return i.addBinaryOption(testPrediction, description, 100);
+      })      
+      .then(() => {        
+          return instance.predict(testPrediction, noOutcome, { value: noContribution, from: accounts[0] });
+      })        
+      .then(() => {
+        return instance.resolveBinaryOption(testPrediction);
+      })
+      .then(() => {
+        return instance.setOptionOutcome(testPrediction, yesOutcome);
+      })     
+      .then(() => {
+        return expectedExceptionPromise(() => {
+          return instance.requestPayout(testPrediction);
+        })
+      });      
   });   
 });

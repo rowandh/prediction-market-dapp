@@ -142,7 +142,7 @@ contract PredictionMarket {
 
         // Don't pay out twice
         require(!prediction.paidOut);
-
+        
         // If the outcome has not been resolved, require that the option has expired
         if(!option.resolved) {
             require(option.expiryBlock > block.number);
@@ -155,6 +155,9 @@ contract PredictionMarket {
         uint r = 1;
 
         if (option.outcome != Outcome.Undecided) {
+            // If the outcome was not undecided, they must have predicted the correct outcome
+            require(prediction.predictedOutcome == option.outcome);
+            
             r = totalBalance / outcomeBalance;
         }
         
